@@ -17,14 +17,16 @@
 ** The code in this file is only used if we are compiling multithreaded
 ** on a win32 system.
 */
+//用于支持win32系统下的多进程
 #ifdef SQLITE_MUTEX_W32
 
 /*
 ** Each recursive mutex is an instance of the following structure.
 */
+//递归式互斥量基本体
 struct sqlite3_mutex {
   CRITICAL_SECTION mutex;    /* Mutex controlling the lock */
-  int id;                    /* Mutex type */
+  int id;                    /* Mutex type */                    //id为类型
 #ifdef SQLITE_DEBUG
   volatile int nRef;         /* Number of enterances */
   volatile DWORD owner;      /* Thread holding this mutex */
@@ -55,7 +57,9 @@ struct sqlite3_mutex {
 ** call to TryEnterCriticalSection() is #ifdef'ed out, so #ifdef 
 ** this out as well.
 */
-#if 0
+//Win95/98/ME 不支持LockFileEx()
+//mutexIsNT() 用于TryEnterCriticalSection() 的调用
+#if 0  //SQLITE_OS_WINCE情况
 #if SQLITE_OS_WINCE || SQLITE_OS_WINRT
 # define mutexIsNT()  (1)
 #else
@@ -77,8 +81,9 @@ struct sqlite3_mutex {
 ** The sqlite3_mutex_held() and sqlite3_mutex_notheld() routine are
 ** intended for use only inside assert() statements.
 */
+  //以下函数只在assert()里面使用
 static int winMutexHeld(sqlite3_mutex *p){
-  return p->nRef!=0 && p->owner==GetCurrentThreadId();
+  return p->nRef!=0 && p->owner==GetCurrentThreadId();//GetCurrentThreadId系统函数  获取当前线程一个唯一的线程标识符
 }
 static int winMutexNotheld2(sqlite3_mutex *p, DWORD tid){
   return p->nRef==0 || p->owner!=tid;
@@ -113,20 +118,23 @@ void sqlite3_win32_sleep(DWORD milliseconds); /* os_win.c */
 
 static int winMutexInit(void){ 
   /* The first to increment to 1 does actual initialization */
-  if( InterlockedCompareExchange(&winMutex_lock, 1, 0)==0 ){
+// 	PVOID *Destination,
+// 		PVOID Exchange,
+//     PVOID Compera 
+	if( InterlockedCompareExchange(&winMutex_lock, 1, 0)==0 ){//2元临界区 一次只进一个  
     int i;
     for(i=0; i<ArraySize(winMutex_staticMutexes); i++){
 #if SQLITE_OS_WINRT
-      InitializeCriticalSectionEx(&winMutex_staticMutexes[i].mutex, 0, 0);
+      InitializeCriticalSectionEx(&winMutex_staticMutexes[i].mutex, 0, 0);  //OS_WINRT 系统才有
 #else
-      InitializeCriticalSection(&winMutex_staticMutexes[i].mutex);
+      InitializeCriticalSection(&winMutex_staticMutexes[i].mutex);//初始化6个临界区
 #endif
     }
-    winMutex_isInit = 1;
+    winMutex_isInit = 1;//初始化完成后赋值1
   }else{
     /* Someone else is in the process of initing the static mutexes */
     while( !winMutex_isInit ){
-      sqlite3_win32_sleep(1);
+      sqlite3_win32_sleep(1);//2元临界区，进不了的睡觉 
     }
   }
   return SQLITE_OK; 
@@ -135,11 +143,11 @@ static int winMutexInit(void){
 static int winMutexEnd(void){ 
   /* The first to decrement to 0 does actual shutdown 
   ** (which should be the last to shutdown.) */
-  if( InterlockedCompareExchange(&winMutex_lock, 0, 1)==1 ){
+  if( InterlockedCompareExchange(&winMutex_lock, 0, 1)==1 ){ //进入临界区的才释放
     if( winMutex_isInit==1 ){
       int i;
       for(i=0; i<ArraySize(winMutex_staticMutexes); i++){
-        DeleteCriticalSection(&winMutex_staticMutexes[i].mutex);
+        DeleteCriticalSection(&winMutex_staticMutexes[i].mutex);//删除临界区，系统函数  删除关键节对象释放由该对象使用的所有系统资源
       }
       winMutex_isInit = 0;
     }
@@ -155,16 +163,21 @@ static int winMutexEnd(void){
 ** to sqlite3_mutex_alloc() is one of these integer constants:
 **
 ** <ul>
-** <li>  SQLITE_MUTEX_FAST
-** <li>  SQLITE_MUTEX_RECURSIVE
-** <li>  SQLITE_MUTEX_STATIC_MASTER
-** <li>  SQLITE_MUTEX_STATIC_MEM
-** <li>  SQLITE_MUTEX_STATIC_MEM2
-** <li>  SQLITE_MUTEX_STATIC_PRNG
-** <li>  SQLITE_MUTEX_STATIC_LRU
-** <li>  SQLITE_MUTEX_STATIC_PMEM
+** <li>  SQLITE_MUTEX_FAST  0
+** <li>  SQLITE_MUTEX_RECURSIVE  1
+//1 2基本没区别 创建互斥体时使用
+** <li>  SQLITE_MUTEX_STATIC_MASTER  2
+** <li>  SQLITE_MUTEX_STATIC_MEM  3
+** <li>  SQLITE_MUTEX_STATIC_MEM2  4 //NOT USED 
+** <li>  SQLITE_MUTEX_STATIC_PRNG  5
+** <li>  SQLITE_MUTEX_STATIC_LRU  6
+** <li>  SQLITE_MUTEX_STATIC_PMEM  7
+//除了1 2 其他需要指向已经分配了的互斥体，目前只使用了6种
 ** </ul>
 **
+//sqlite3_mutex_alloc() 作用是分配新互斥体，并返回指针，如果分配失败，返回相应错误
+
+
 ** The first two constants cause sqlite3_mutex_alloc() to create
 ** a new mutex.  The new mutex is recursive when SQLITE_MUTEX_RECURSIVE
 ** is used but not necessarily so when SQLITE_MUTEX_FAST is used.
@@ -183,6 +196,8 @@ static int winMutexEnd(void){
 ** use only the dynamic mutexes returned by SQLITE_MUTEX_FAST or
 ** SQLITE_MUTEX_RECURSIVE.
 **
+//静态互斥体只供SQLite 内部用，用户调用时使用的是SQLITE_MUTEX_FAST  或者SQLITE_MUTEX_RECURSIVE返回的动态互斥体，
+//只有当使用静态互斥体时，sqlite3_mutex_alloc()才返回相同类型，动态互斥体如果存在，类型会变化
 ** Note that if one of the dynamic mutex parameters (SQLITE_MUTEX_FAST
 ** or SQLITE_MUTEX_RECURSIVE) is used then sqlite3_mutex_alloc()
 ** returns a different mutex on every call.  But for the static 
@@ -195,7 +210,7 @@ static sqlite3_mutex *winMutexAlloc(int iType){
   switch( iType ){
     case SQLITE_MUTEX_FAST:
     case SQLITE_MUTEX_RECURSIVE: {
-      p = sqlite3MallocZero( sizeof(*p) );
+      p = sqlite3MallocZero( sizeof(*p) );//最终调用memset分配空间
       if( p ){  
 #ifdef SQLITE_DEBUG
         p->id = iType;
@@ -229,9 +244,9 @@ static sqlite3_mutex *winMutexAlloc(int iType){
 ** mutex that it allocates.
 */
 static void winMutexFree(sqlite3_mutex *p){
-  assert( p );
-  assert( p->nRef==0 && p->owner==0 );
-  assert( p->id==SQLITE_MUTEX_FAST || p->id==SQLITE_MUTEX_RECURSIVE );
+  assert( p );//检查互斥体是否存在
+  assert( p->nRef==0 && p->owner==0 );//进入的数量是否为0  使用该互斥体的线程ID是否为0
+  assert( p->id==SQLITE_MUTEX_FAST || p->id==SQLITE_MUTEX_RECURSIVE ); //是否为SQLITE_MUTEX_FAST或SQLITE_MUTEX_RECURSIVE
   DeleteCriticalSection(&p->mutex);
   sqlite3_free(p);
 }
@@ -247,6 +262,7 @@ static void winMutexFree(sqlite3_mutex *p){
 ** can enter.  If the same thread tries to enter any other kind of mutex
 ** more than once, the behavior is undefined.
 */
+// 请求互斥锁，sqlite3_mutex_enter()导致阻塞，sqlite3_mutex_try()返回SQLITE_BUSY
 static void winMutexEnter(sqlite3_mutex *p){
 #ifdef SQLITE_DEBUG
   DWORD tid = GetCurrentThreadId(); 
@@ -255,8 +271,8 @@ static void winMutexEnter(sqlite3_mutex *p){
   EnterCriticalSection(&p->mutex);
 #ifdef SQLITE_DEBUG
   assert( p->nRef>0 || p->owner==0 );
-  p->owner = tid; 
-  p->nRef++;
+  p->owner = tid;	//填写被引用的线程ID
+  p->nRef++;	//线程引用加1
   if( p->trace ){
     printf("enter mutex %p (%d) with nRef=%d\n", p, p->trace, p->nRef);
   }
@@ -279,6 +295,7 @@ static int winMutexTry(sqlite3_mutex *p){
   ** For that reason, we will omit this optimization for now.  See
   ** ticket #2685.
   */
+  //TryEnterCriticalSection() 只在WinNT上才有
 #if 0
   if( mutexIsNT() && TryEnterCriticalSection(&p->mutex) ){
     p->owner = tid;
@@ -286,7 +303,7 @@ static int winMutexTry(sqlite3_mutex *p){
     rc = SQLITE_OK;
   }
 #else
-  UNUSED_PARAMETER(p);
+  UNUSED_PARAMETER(p);//void *
 #endif
 #ifdef SQLITE_DEBUG
   if( rc==SQLITE_OK && p->trace ){
@@ -307,8 +324,8 @@ static void winMutexLeave(sqlite3_mutex *p){
   DWORD tid = GetCurrentThreadId();
   assert( p->nRef>0 );
   assert( p->owner==tid );
-  p->nRef--;
-  if( p->nRef==0 ) p->owner = 0;
+  p->nRef--; //退出临界区时，引用数减1
+  if( p->nRef==0 ) p->owner = 0;  //引用减为0时，删除被引用的ID记录
   assert( p->nRef==0 || p->id==SQLITE_MUTEX_RECURSIVE );
 #endif
   LeaveCriticalSection(&p->mutex);
@@ -328,7 +345,7 @@ sqlite3_mutex_methods const *sqlite3DefaultMutex(void){
     winMutexEnter,
     winMutexTry,
     winMutexLeave,
-#ifdef SQLITE_DEBUG
+#ifdef SQLITE_DEBUG  //debug下才使用
     winMutexHeld,
     winMutexNotheld
 #else
