@@ -10,10 +10,10 @@
 **
 *************************************************************************
 ** This file contains the C functions that implement mutexes.
-**这个文档包含实现互斥锁的C 函数
+**这个文档包含互斥锁的实现
 **
 ** This file contains code that is common across all mutex implementations.
-**这个文档包含共同所有互斥锁的代码实现。
+**这个文档包含互斥锁的实现（拒绝百度翻译）
 */
 #include "sqliteInt.h"
 
@@ -38,6 +38,7 @@ static SQLITE_WSD int mutexIsInit = 0;
 int sqlite3MutexInit(void){ 
   int rc = SQLITE_OK;
   if( !sqlite3GlobalConfig.mutex.xMutexAlloc ){
+    
     /* If the xMutexAlloc method has not been set, then the user did not
     ** install a mutex implementation via sqlite3_config() prior to 
     ** sqlite3_initialize() being called. This block copies pointers to
@@ -47,15 +48,24 @@ int sqlite3MutexInit(void){
     **sqlite3_initialize()前被调用。
    ** 这段复制指针向sqlite3GlobalConfig默认实现结构。
     */
+    	  //////////////////////////////////////////////////////////////////////////
+	  /************************************************************************/
+	  /* 我是华丽的分割线                                                                     */
+	  /************************************************************************/
+    	  //majin78 xMutexAlloc未设置，"sqliteInt.h" #ifdef SQLITE_OMIT_WSD  
+// #define sqlite3GlobalConfig GLOBAL(struct Sqlite3Config, sqlite3Config) 宏定义 为Sqlite3Config结构体，后一参数为结构体size
+	  //majin78 sqlite3GlobalConfig.mutex 属性为sqlite3_mem_methods 定义于sqlite3.h  typedef struct sqlite3_mutex_methods sqlite3_mutex_methods;
+	  //struct sqlite3_mutex_methods 定义于sqlite3.h
+	  
     sqlite3_mutex_methods const *pFrom;
     sqlite3_mutex_methods *pTo = &sqlite3GlobalConfig.mutex;
 
-    if( sqlite3GlobalConfig.bCoreMutex ){
-      pFrom = sqlite3DefaultMutex();
+    if( sqlite3GlobalConfig.bCoreMutex ){//  int bCoreMutex;                   /* True to enable core mutexing */
+      pFrom = sqlite3DefaultMutex();//#ifndef SQLITE_MUTEX_OMIT  sqlite3_mutex_methods const *sqlite3DefaultMutex(void);
     }else{
-      pFrom = sqlite3NoopMutex();
+      pFrom = sqlite3NoopMutex();//  sqlite3_mutex_methods const *sqlite3NoopMutex(void);
     }
-    memcpy(pTo, pFrom, offsetof(sqlite3_mutex_methods, xMutexAlloc));
+    memcpy(pTo, pFrom, offsetof(sqlite3_mutex_methods, xMutexAlloc));//offsetof该宏用于求结构体中一个成员在该结构体中的偏移量。
     memcpy(&pTo->xMutexFree, &pFrom->xMutexFree,
            sizeof(*pTo) - offsetof(sqlite3_mutex_methods, xMutexFree));
     pTo->xMutexAlloc = pFrom->xMutexAlloc;
