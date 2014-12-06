@@ -94,7 +94,7 @@ int sqlite3MutexEnd(void){
 /*
 ** Retrieve a pointer to a static mutex or allocate a new dynamic one.
 **获取一个指向静态互斥锁或分配一个新的动态互斥锁。
-//定义sqlite3_mutex_alloc sqlite3MutexAlloc  分配新互斥锁
+//定义sqlite3_mutex_alloc sqlite3MutexAlloc  根据类型（id）分配新互斥锁
 */
 sqlite3_mutex *sqlite3_mutex_alloc(int id){
 #ifndef SQLITE_OMIT_AUTOINIT
