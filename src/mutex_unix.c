@@ -71,16 +71,16 @@ struct sqlite3_mutex {
 */
 #if !defined(NDEBUG) || defined(SQLITE_DEBUG)
 static int pthreadMutexHeld(sqlite3_mutex *p){
-  return (p->nRef!=0 && pthread_equal(p->owner, pthread_self()));
+  return (p->nRef!=0 && pthread_equal(p->owner, pthread_self()));//（引用不为0 且 owner为本线程调用） 或者 引用为0 才返回0  即处于转化状态（PENDING锁）
 }
 static int pthreadMutexNotheld(sqlite3_mutex *p){
-  return p->nRef==0 || pthread_equal(p->owner, pthread_self())==0;
+  return p->nRef==0 || pthread_equal(p->owner, pthread_self())==0;//引用不为0 且 owner为不同线程调用 才返回0 即非转化状态（其他锁）
 }
 #endif
 
 /*
 ** Initialize and deinitialize the mutex subsystem.
-*/
+*///互斥体系统初始化
 static int pthreadMutexInit(void){ return SQLITE_OK; }
 static int pthreadMutexEnd(void){ return SQLITE_OK; }
 
@@ -91,6 +91,7 @@ static int pthreadMutexEnd(void){ return SQLITE_OK; }
 ** will unwind its stack and return an error.  The argument
 ** to sqlite3_mutex_alloc() is one of these integer constants:
 **
+//同mutex_win32.c定义
 ** <ul>
 ** <li>  SQLITE_MUTEX_FAST
 ** <li>  SQLITE_MUTEX_RECURSIVE
@@ -134,7 +135,7 @@ static sqlite3_mutex *pthreadMutexAlloc(int iType){
     SQLITE3_MUTEX_INITIALIZER,
     SQLITE3_MUTEX_INITIALIZER,
     SQLITE3_MUTEX_INITIALIZER
-  };
+  };//6个基本互斥体
   sqlite3_mutex *p;
   switch( iType ){
     case SQLITE_MUTEX_RECURSIVE: {
@@ -143,14 +144,14 @@ static sqlite3_mutex *pthreadMutexAlloc(int iType){
 #ifdef SQLITE_HOMEGROWN_RECURSIVE_MUTEX
         /* If recursive mutexes are not available, we will have to
         ** build our own.  See below. */
-        pthread_mutex_init(&p->mutex, 0);
+        pthread_mutex_init(&p->mutex, 0);//调用UNIX下互斥锁的初始化
 #else
         /* Use a recursive mutex if it is available */
         pthread_mutexattr_t recursiveAttr;
-        pthread_mutexattr_init(&recursiveAttr);
-        pthread_mutexattr_settype(&recursiveAttr, PTHREAD_MUTEX_RECURSIVE);
-        pthread_mutex_init(&p->mutex, &recursiveAttr);
-        pthread_mutexattr_destroy(&recursiveAttr);
+        pthread_mutexattr_init(&recursiveAttr);//新建锁recursiveAttr
+        pthread_mutexattr_settype(&recursiveAttr, PTHREAD_MUTEX_RECURSIVE);//设置锁类型
+        pthread_mutex_init(&p->mutex, &recursiveAttr);//直接赋值
+        pthread_mutexattr_destroy(&recursiveAttr);//销毁锁recursiveAttr
 #endif
 #if SQLITE_MUTEX_NREF
         p->id = iType;
@@ -159,7 +160,7 @@ static sqlite3_mutex *pthreadMutexAlloc(int iType){
       break;
     }
     case SQLITE_MUTEX_FAST: {
-      p = sqlite3MallocZero( sizeof(*p) );
+      p = sqlite3MallocZero( sizeof(*p) );//SQLITE_MUTEX_FAST为新建锁，需内存分配
       if( p ){
 #if SQLITE_MUTEX_NREF
         p->id = iType;
@@ -187,6 +188,7 @@ static sqlite3_mutex *pthreadMutexAlloc(int iType){
 ** allocated mutex.  SQLite is careful to deallocate every
 ** mutex that it allocates.
 */
+//销毁分配锁，释放内存
 static void pthreadMutexFree(sqlite3_mutex *p){
   assert( p->nRef==0 );
   assert( p->id==SQLITE_MUTEX_FAST || p->id==SQLITE_MUTEX_RECURSIVE );
@@ -205,6 +207,8 @@ static void pthreadMutexFree(sqlite3_mutex *p){
 ** can enter.  If the same thread tries to enter any other kind of mutex
 ** more than once, the behavior is undefined.
 */
+
+// 请求互斥锁，sqlite3_mutex_enter()导致阻塞，sqlite3_mutex_try()返回SQLITE_BUSY
 static void pthreadMutexEnter(sqlite3_mutex *p){
   assert( p->id==SQLITE_MUTEX_RECURSIVE || pthreadMutexNotheld(p) );
 
@@ -219,21 +223,22 @@ static void pthreadMutexEnter(sqlite3_mutex *p){
   ** address at the same time.  If either of these two conditions
   ** are not met, then the mutexes will fail and problems will result.
   */
-  {
+  {//pthread_equal()假如不存在，自己写
     pthread_t self = pthread_self();
     if( p->nRef>0 && pthread_equal(p->owner, self) ){
-      p->nRef++;
-    }else{
+      p->nRef++;//引用大于0 并且是本线程引用，则计数加1
+    }else{ //否则阻塞 将计数设置1
       pthread_mutex_lock(&p->mutex);
       assert( p->nRef==0 );
       p->owner = self;
-      p->nRef = 1;
+      p->nRef = 1; 
     }
   }
 #else
   /* Use the built-in recursive mutexes if they are available.
   */
-  pthread_mutex_lock(&p->mutex);
+  pthread_mutex_lock(&p->mutex);//当pthread_mutex_lock()返回时，该互斥锁已被锁定。
+  //线程调用该函数让互斥锁上锁，如果该互斥锁已被另一个线程锁定和拥有，则调用该线程将阻塞，直到该互斥锁变为可用为止。
 #if SQLITE_MUTEX_NREF
   assert( p->nRef>0 || p->owner==0 );
   p->owner = pthread_self();
@@ -267,7 +272,7 @@ static int pthreadMutexTry(sqlite3_mutex *p){
     if( p->nRef>0 && pthread_equal(p->owner, self) ){
       p->nRef++;
       rc = SQLITE_OK;
-    }else if( pthread_mutex_trylock(&p->mutex)==0 ){
+    }else if( pthread_mutex_trylock(&p->mutex)==0 ){//此调用不阻塞线程
       assert( p->nRef==0 );
       p->owner = self;
       p->nRef = 1;
@@ -279,14 +284,14 @@ static int pthreadMutexTry(sqlite3_mutex *p){
 #else
   /* Use the built-in recursive mutexes if they are available.
   */
-  if( pthread_mutex_trylock(&p->mutex)==0 ){
+  if( pthread_mutex_trylock(&p->mutex)==0 ){//函数成功返回0。任何其他返回值都表示错误。
 #if SQLITE_MUTEX_NREF
     p->owner = pthread_self();
     p->nRef++;
 #endif
-    rc = SQLITE_OK;
+    rc = SQLITE_OK;//pthread_mutex_trylock成功，返回SQLITE_OK
   }else{
-    rc = SQLITE_BUSY;
+    rc = SQLITE_BUSY;//否则返回SQLITE_BUSY
   }
 #endif
 
@@ -305,19 +310,19 @@ static int pthreadMutexTry(sqlite3_mutex *p){
 ** is not currently allocated.  SQLite will never do either.
 */
 static void pthreadMutexLeave(sqlite3_mutex *p){
-  assert( pthreadMutexHeld(p) );
+  assert( pthreadMutexHeld(p) );//是否为转化状态 pending锁，是则报警
 #if SQLITE_MUTEX_NREF
   p->nRef--;
   if( p->nRef==0 ) p->owner = 0;
 #endif
-  assert( p->nRef==0 || p->id==SQLITE_MUTEX_RECURSIVE );
+  assert( p->nRef==0 || p->id==SQLITE_MUTEX_RECURSIVE );//是否引用为0，且为MUTEX_RECURSIVE 同一个线程可以多次进入临界区
 
 #ifdef SQLITE_HOMEGROWN_RECURSIVE_MUTEX
   if( p->nRef==0 ){
     pthread_mutex_unlock(&p->mutex);
   }
 #else
-  pthread_mutex_unlock(&p->mutex);
+  pthread_mutex_unlock(&p->mutex);//解锁
 #endif
 
 #ifdef SQLITE_DEBUG
@@ -326,7 +331,7 @@ static void pthreadMutexLeave(sqlite3_mutex *p){
   }
 #endif
 }
-
+//返回默认互斥体函数 结构体
 sqlite3_mutex_methods const *sqlite3DefaultMutex(void){
   static const sqlite3_mutex_methods sMutex = {
     pthreadMutexInit,
