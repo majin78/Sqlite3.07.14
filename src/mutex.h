@@ -68,5 +68,5 @@
 #define sqlite3MutexEnd()
 #define MUTEX_LOGIC(X)
 #else
-#define MUTEX_LOGIC(X)            X
+#define MUTEX_LOGIC(X)            X  //定义了SQLITE_DEBUG 才使用，防止调试时出错
 #endif /* defined(SQLITE_MUTEX_OMIT) */
