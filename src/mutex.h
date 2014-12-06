@@ -19,6 +19,7 @@
 ** Source files should #include the sqliteInt.h file and let that file
 ** include this one indirectly.
 */
+//majin78 文件需被sqliteInt.h引用
 
 
 /*
@@ -26,21 +27,21 @@
 **
 **   SQLITE_MUTEX_OMIT         No mutex logic.  Not even stubs.  The
 **                             mutexes implemention cannot be overridden
-**                             at start-time.
+**                             at start-time.//majin78初始化时不被重置
 **
 **   SQLITE_MUTEX_NOOP         For single-threaded applications.  No
 **                             mutual exclusion is provided.  But this
 **                             implementation can be overridden at
-**                             start-time.
+**                             start-time.//majin78只使用单进程调用
 **
-**   SQLITE_MUTEX_PTHREADS     For multi-threaded applications on Unix.
+**   SQLITE_MUTEX_PTHREADS     For multi-threaded applications on Unix.//majin78Unix调用
 **
-**   SQLITE_MUTEX_W32          For multi-threaded applications on Win32.
+**   SQLITE_MUTEX_W32          For multi-threaded applications on Win32.//majin78Win32调用
 */
 #if !SQLITE_THREADSAFE
 # define SQLITE_MUTEX_OMIT
 #endif
-#if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP)
+#if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP)//SQLITE_THREADSAFE 且未定义SQLITE_MUTEX_NOOP   根据系统选择相应MUTEX实现
 #  if SQLITE_OS_UNIX
 #    define SQLITE_MUTEX_PTHREADS
 #  elif SQLITE_OS_WIN
@@ -53,6 +54,7 @@
 #ifdef SQLITE_MUTEX_OMIT
 /*
 ** If this is a no-op implementation, implement everything as macros.
+//宏定义了一系列的函数，需声明SQLITE_MUTEX_OMIT
 */
 #define sqlite3_mutex_alloc(X)    ((sqlite3_mutex*)8)
 #define sqlite3_mutex_free(X)
